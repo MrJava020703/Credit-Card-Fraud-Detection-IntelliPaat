@@ -2,7 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import load_model
+import streamlit as st
+import pandas as pd
+import numpy as np
 import tempfile
 import matplotlib.pyplot as plt
 
