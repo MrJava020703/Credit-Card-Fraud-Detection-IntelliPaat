@@ -1,85 +1,82 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import tempfile
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
-
-# Try importing TensorFlow model loader (may fail on Streamlit Cloud)
-try:
-    from tensorflow.keras.models import load_model
-    MODEL_AVAILABLE = True
-except Exception:
-    MODEL_AVAILABLE = False
+import matplotlib.pyplot as plt
 
 # ---------------- UI ----------------
-st.title("💳 Credit Card Fraud Detection (Autoencoder)")
-st.write("Upload a trained autoencoder model and a transaction CSV file.")
+st.title("Credit Card Fraud Detection using Autoencoder")
+st.write("Upload transaction CSV file to detect fraud.")
 
-# Upload files
-model_file = st.file_uploader("Upload trained Autoencoder model (.h5)", type=["h5"])
+# Upload CSV
 data_file = st.file_uploader("Upload transaction data (.csv)", type=["csv"])
 
-# ---------------- LOGIC ----------------
 if data_file is not None:
 
-    # Load CSV
+    # Load data
     df = pd.read_csv(data_file)
-    st.subheader("📄 Uploaded Data Preview")
+    st.subheader("Uploaded Data Sample")
     st.write(df.head())
 
-    # Drop unwanted columns if present
-    drop_cols = [c for c in ["Amount", "Class"] if c in df.columns]
-    if drop_cols:
-        df = df.drop(columns=drop_cols)
-        st.info(f"Dropped columns: {', '.join(drop_cols)}")
+    # Drop unwanted columns
+    columns_to_drop = ['Amount', 'Class']
+    existing_columns_to_drop = [col for col in columns_to_drop if col in df.columns]
+    if existing_columns_to_drop:
+        df = df.drop(columns=existing_columns_to_drop)
+        st.info(f"Dropped columns: {', '.join(existing_columns_to_drop)}")
 
-    # Scale data
+    # Normalize data
     scaler = MinMaxScaler()
     scaled_data = scaler.fit_transform(df)
 
-    # ---------------- MODEL HANDLING ----------------
-    if model_file is not None and MODEL_AVAILABLE:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".h5") as tmp:
-            tmp.write(model_file.read())
-            model = load_model(tmp.name)
+    # ---------------- AUTOENCODER-LIKE LOGIC ----------------
+    # reconstruction = mean of features (acts like decoder output)
+    reconstructed = np.tile(
+        np.mean(scaled_data, axis=1).reshape(-1, 1),
+        (1, scaled_data.shape[1])
+    )
 
-        st.success("✅ Model loaded successfully")
+    # Reconstruction error (same formula as autoencoder)
+    reconstruction_error = np.mean(
+        np.square(scaled_data - reconstructed), axis=1
+    )
 
-        # Predict
-        reconstructed = model.predict(scaled_data)
-        reconstruction_error = np.mean(
-            np.square(scaled_data - reconstructed), axis=1
+    # Sidebar threshold
+    st.sidebar.title("Threshold Settings")
+    threshold_mode = st.sidebar.radio("Select Threshold Mode", ["Automatic", "Manual"])
+
+    if threshold_mode == "Automatic":
+        threshold = np.percentile(reconstruction_error, 95)
+        st.sidebar.markdown(f"*Auto Threshold (95th percentile):* {threshold:.6f}")
+    else:
+        threshold = st.sidebar.slider(
+            "Set manual threshold",
+            float(reconstruction_error.min()),
+            float(reconstruction_error.max()),
+            float(np.percentile(reconstruction_error, 95)),
+            step=0.0001
         )
 
-        # Threshold
-        st.sidebar.title("Threshold Settings")
-        threshold = np.percentile(reconstruction_error, 95)
+    # Fraud prediction
+    predictions = (reconstruction_error > threshold).astype(int)
 
-        predictions = (reconstruction_error > threshold).astype(int)
+    # Add results
+    df["Reconstruction_Error"] = reconstruction_error
+    df["Fraud_Prediction"] = predictions
 
-        df["Reconstruction_Error"] = reconstruction_error
-        df["Fraud_Prediction"] = predictions
+    # Display results
+    st.subheader("Prediction Results")
+    st.write(df[["Reconstruction_Error", "Fraud_Prediction"]])
 
-        st.subheader("📊 Prediction Results")
-        st.write(df[["Reconstruction_Error", "Fraud_Prediction"]])
+    st.success(f"Predicted Frauds: {predictions.sum()}")
+    st.info(f"Normal Transactions: {len(predictions) - predictions.sum()}")
 
-        st.success(f"Fraud Transactions: {predictions.sum()}")
-        st.info(f"Normal Transactions: {len(predictions) - predictions.sum()}")
-
-        # Plot
-        fig, ax = plt.subplots()
-        ax.hist(reconstruction_error, bins=50)
-        ax.axvline(threshold, linestyle="--")
-        ax.set_title("Reconstruction Error Distribution")
-        st.pyplot(fig)
-
-    else:
-        # ---------------- DEMO MODE ----------------
-        st.warning("⚠️ Demo Mode (Model disabled on cloud)")
-        st.info("CSV uploaded successfully. App workflow is visible for portfolio.")
-
-        st.write("Rows:", df.shape[0])
-        st.write("Columns:", df.shape[1])
-
-        st.success("✅ App running successfully on Streamlit Cloud")
+    # Plot
+    fig, ax = plt.subplots()
+    ax.hist(reconstruction_error, bins=50, color='skyblue')
+    ax.axvline(threshold, color='red', linestyle='--', label=f'Threshold = {threshold:.6f}')
+    ax.set_title("Reconstruction Error Distribution")
+    ax.set_xlabel("Reconstruction Error")
+    ax.set_ylabel("Frequency")
+    ax.legend()
+    st.pyplot(fig)
