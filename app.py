@@ -5,7 +5,7 @@ from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 
 # ---------------- UI ----------------
-st.title("Credit Card Fraud Detection using Autoencoder")
+st.title("Credit Card Fraud Detection")
 st.write("Upload transaction CSV file to detect fraud.")
 
 # Upload CSV
